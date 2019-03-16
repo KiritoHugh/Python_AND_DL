@@ -7,14 +7,16 @@ import pickle
 from collections import namedtuple
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtWidgets import (QApplication, QDialog, QFileDialog, QGridLayout,QLabel, QPushButton)
-from PIL import Image
+from PyQt5.QtWidgets import (QApplication, QDialog, QFileDialog, QGridLayout,QLabel, QPushButton, QLineEdit, QPlainTextEdit)
+# from PyQt5 import KeepAspectRatio,FastTransformation
+from PIL import Image,ImageDraw
 import itchat, time
 from itchat.content import *
 import face_recognition
 from queue import Queue
 from threading import Thread
 import random
+Degree_Of_Find_Small_Face = 2
 
 def tsetfun():
     print('test')
@@ -28,16 +30,19 @@ class Face(object):
             self.image = cv2.imread(path_or_image)
         if self.image is not None:
             height, width, depth = self.image.shape
-            ratio = 200/max(height,width)
-            self.image = cv2.resize(self.image,(int(width*ratio),int(height*ratio)))
+            self.ratio = 200/max(height,width)
+            self.image = cv2.resize(self.image,(int(width*self.ratio),int(height*self.ratio)))
     
     def face_encode(self):
         rgb_image = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
-        boxes = face_recognition.face_locations(rgb_image,model='cnn')
+        self.boxes = face_recognition.face_locations(rgb_image,Degree_Of_Find_Small_Face,model='cnn')
         max_area = 0
-        if not boxes:
+        if not self.boxes:
             print('boxes empty')
-        for each in boxes:
+            self.boxes = face_recognition.face_locations(rgb_image,Degree_Of_Find_Small_Face+1,model='cnn')
+            if not self.boxes:
+                print('boxes empty')
+        for each in self.boxes:
             top, right, bottom, left = each
             area = (bottom-top)*(right-left)
             if area > max_area:
@@ -47,6 +52,7 @@ class Face(object):
         box = [box]
         self.face_image = rgb_image[top:bottom,left:right]
         self.encoding = face_recognition.face_encodings(rgb_image,box)
+        self.encodings = face_recognition.face_encodings(rgb_image,self.boxes)
         self.box = box
 
     def regist_face(self, face_encoding, face_name):
@@ -73,7 +79,7 @@ class Face(object):
         min_pos = distance.index(min_dis)
         # print('min_dis %f '%min_dis)
         # print('min_pos %f'%min_pos)
-        if min_dis < 0.5:
+        if min_dis < 0.55:
             self.name = name[min_pos]
         else:
             self.name = 'unknow'        
@@ -104,31 +110,42 @@ class win(QDialog):
 
     def initUI(self):
         self.resize(400, 300)
+        self.lineName = QLineEdit('Name',self)
+        self.lineOutput = QPlainTextEdit(self)
         self.btnOpen = QPushButton('Open', self)
         self.btnSave = QPushButton('Save', self)
-        self.btnProcess = QPushButton('Process', self)
+        self.btnFindface = QPushButton('Detect faces', self)
         self.btnQuit = QPushButton('Quit', self)
         self.label = QLabel()
         # my
         self.btnConnect = QPushButton('Connect Wechat',self)
+        self.btnRegist = QPushButton('Regist',self)
+        self.subtitile_Output = QLabel('Output:')
+        self.subtitile_Input = QLabel('Input:')
 
         # 布局设定
         layout = QGridLayout(self)
-        layout.addWidget(self.label, 0, 1, 3, 4)
+        layout.addWidget(self.label, 0, 1, 2, 4)
+        layout.addWidget(self.subtitile_Input,2,1,1,1)
+        layout.addWidget(self.lineName,3, 1, 1, 1)
         layout.addWidget(self.btnOpen, 4, 1, 1, 1)
         layout.addWidget(self.btnSave, 4, 2, 1, 1)
-        layout.addWidget(self.btnProcess, 4, 3, 1, 1)
+        layout.addWidget(self.btnFindface, 4, 3, 1, 1)
         layout.addWidget(self.btnQuit, 4, 4, 1, 1)
         # my
         layout.addWidget(self.btnConnect,5,1,1,1)
+        layout.addWidget(self.btnRegist,5,2,1,1)
+        layout.addWidget(self.subtitile_Output,6,1,1,1)
+        layout.addWidget(self.lineOutput,7,1,2,4)
 
         # 信号与槽连接, PyQt5与Qt5相同, 信号可绑定普通成员函数
         self.btnOpen.clicked.connect(self.openSlot)
         self.btnSave.clicked.connect(self.saveSlot)
-        self.btnProcess.clicked.connect(self.processSlot)
+        self.btnFindface.clicked.connect(self.findfaceSlot)
         self.btnQuit.clicked.connect(self.close)
         # my
         self.btnConnect.clicked.connect(self.ConnectWechat)
+        self.btnRegist.clicked.connect(self.Local_Regist)
 
     def openSlot(self):
         # 调用打开文件diglog
@@ -139,7 +156,10 @@ class win(QDialog):
             return
 
         # 采用opencv函数读取数据
-        self.img = cv.imread(fileName, -1)
+        self.img = cv2.imread(fileName)
+        height, width, depth = self.img.shape
+        self.ratio = 500/max(height,width)
+        self.img = cv2.resize(self.img,(int(width*self.ratio),int(height*self.ratio)))
 
         if self.img.size == 1:
             return
@@ -157,15 +177,35 @@ class win(QDialog):
             return
 
         # 调用opencv写入图像
-        cv.imwrite(fileName, self.img)
+        cv2.imwrite(fileName, self.img)
 
-    def processSlot(self):
-        if self.img.size == 1:
-            return
-
-        # 对图像做模糊处理, 窗口设定为5x5
-        self.img = cv.blur(self.img, (5, 5))
-
+    def findfaceSlot(self):
+        names = []
+        # locations = face_recognition.face_locations(self.img,Degree_Of_Find_Small_Face,'cnn')
+        One_object = Face(self.img)
+        # self.img = One_object.image
+        self.img = cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB)
+        self.img = Image.fromarray(self.img)
+        draw_image = ImageDraw.Draw(self.img)
+        One_object.face_encode()
+        # int(x/ratio)
+        for (top, right, bottom, left ), face_encoding in zip(One_object.boxes, One_object.encodings):
+            One_object.detect_face([face_encoding])
+            # print(str(face_encoding))
+            name = One_object.name
+            names.append(name)
+            (top, right, bottom, left ) = tuple([int(x/One_object.ratio) for x in (top, right, bottom, left )])
+            # print((top, right, bottom, left ))
+            draw_image.rectangle(((left, top),(right,bottom)), outline = (0, 0, 255))
+            text_width, text_height = draw_image.textsize(One_object.name)
+            draw_image.rectangle(((left, bottom - text_height - 10), (right, bottom)), fill=(0, 0, 255), outline=(0, 0, 255))
+            draw_image.text((left + 6, bottom - text_height - 5), name, fill=(255, 255, 255, 255))
+        self.img = np.array(self.img) 
+        # Convert RGB to BGR 
+        self.img = self.img[:, :, ::-1].copy() 
+        self.lineOutput.setPlainText(str(names))
+        # self.lineOutput.setPlainText
+        # self.lineOutput.displayText()
         self.refreshShow()
 
     def refreshShow(self):
@@ -176,7 +216,12 @@ class win(QDialog):
                            QImage.Format_RGB888).rgbSwapped()
 
         # 将Qimage显示出来
-        self.label.setPixmap(QPixmap.fromImage(self.qImg))
+        pixmap = QPixmap.fromImage(self.qImg)
+        # pixmap = pixmap.scaledToHeight(500)
+        # smaller_pixmap = pixmap.scaled(32, 32, KeepAspectRatio, FastTransformation)
+        self.label.setPixmap(pixmap)
+        # self.resize(pixmap.width(),pixmap.height()) #make the window size to fit the pic beautifully
+        
 
     @staticmethod
     def _show_message(message):
@@ -192,17 +237,24 @@ class win(QDialog):
         self.big_thread.finished_signal.connect(self._show_message)
         self.big_thread.start()
 
+    def Local_Regist(self):
+        One_object = Face(self.img)
+        One_object.face_encode()
+        One_object.regist_face(One_object.encoding,self.lineName.text())
+        self.lineOutput.setPlainText('success')
+        # self.lineOutput.displayText()
+
     def test(self):
         tsetfun()
 
 if __name__ == '__main__':
 
-    helpinfo = 'regist detect text'
+    helpinfo = '\n */I AM WECHAboT/* \n Nice to meet you, I have 3 commands: regist detect text'
 
     init_reply_list = [
-        'Please give a LEGAL command */%s/*, sir.'%helpinfo,
-        'Master! Beg for a LEGAL command */%s/*.'%helpinfo,
-        'I am bored! Please order me */%s/*.'%helpinfo
+        'Please give a LEGAL command, sir.%s'%helpinfo,
+        'Master! Beg for a LEGAL command.%s'%helpinfo,
+        'I am bored! Please order me.%s'%helpinfo
     ]
     command = 'empty'
     reciever = 'filehelper'
@@ -257,6 +309,7 @@ if __name__ == '__main__':
             One_instance.face_encode()
             print('after encode')
             One_instance.detect_face(One_instance.encoding)
+            print(str(One_instance.encoding))
             print('after detect')
             itchat.send(One_instance.name,reciever)
             print('after send')
@@ -279,5 +332,13 @@ if __name__ == '__main__':
     # win32process.TerminateProcess(wechat_handle[0],0)
 
 
+# necessary waitlist:
+#     - use UI to regist/detect [input of qt, text show of qt]
+#     - pluse some other API(pic2text*, weather, voice generatet**, voice2text*, generate stock pic)
+
 # improvement waitlist:
 #     - in the Face.face_encode, if no face in photo
+#     - voice changer**
+#     - solve sodu***
+#     - modify the weekness of only detecting a SINGLE face in Face.detect_face(self.name=the list of names)*** 
+
