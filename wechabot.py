@@ -2,89 +2,32 @@ import sys
 import cv2
 import os
 import numpy as np
-from imutils import paths
-import pickle
-from collections import namedtuple
-from PyQt5.QtCore import QThread, pyqtSignal
-from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import (QApplication, QDialog, QFileDialog, QGridLayout,QLabel, QPushButton, QLineEdit, QPlainTextEdit)
-# from PyQt5 import KeepAspectRatio,FastTransformation
 from PIL import Image,ImageDraw
 import itchat, time
 from itchat.content import *
-import face_recognition
 from queue import Queue
 from threading import Thread
 import random
-Degree_Of_Find_Small_Face = 2
+from FaceClass import Face
+from TextClass import Text
+# from PyQtClass import *
 
-def tsetfun():
-    print('test')
+# from PyQt5 import KeepAspectRatio,FastTransformation
+import face_recognition
+# from imutils import paths
+# import pickle
+# from collections import namedtuple
+from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtGui import QImage, QPixmap
 
-class Face(object):
-    def __init__(self, path_or_image):
-        # to save the input image(path or imagedata) in the self.image
-        if isinstance(path_or_image, np.ndarray):
-            self.image = path_or_image
-        elif isinstance(path_or_image, str):
-            self.image = cv2.imread(path_or_image)
-        if self.image is not None:
-            height, width, depth = self.image.shape
-            self.ratio = 200/max(height,width)
-            self.image = cv2.resize(self.image,(int(width*self.ratio),int(height*self.ratio)))
-    
-    def face_encode(self):
-        rgb_image = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
-        self.boxes = face_recognition.face_locations(rgb_image,Degree_Of_Find_Small_Face,model='cnn')
-        max_area = 0
-        if not self.boxes:
-            print('boxes empty')
-            self.boxes = face_recognition.face_locations(rgb_image,Degree_Of_Find_Small_Face+1,model='cnn')
-            if not self.boxes:
-                print('boxes empty')
-        for each in self.boxes:
-            top, right, bottom, left = each
-            area = (bottom-top)*(right-left)
-            if area > max_area:
-                max_area = area
-                box = each
-        top, right, bottom, left = box
-        box = [box]
-        self.face_image = rgb_image[top:bottom,left:right]
-        self.encoding = face_recognition.face_encodings(rgb_image,box)
-        self.encodings = face_recognition.face_encodings(rgb_image,self.boxes)
-        self.box = box
+# Degree_Of_Find_Small_Face = 2
 
-    def regist_face(self, face_encoding, face_name):
-        # check if it's been registed already
-        # list = open('.\\database\\ListOfAll','wb')
-        
-        # regist to pickle file 
-        self.data = [{'name':face_name, 'encoding':face_encoding}]
-        f = open('.\\database\\'+face_name,'wb')
-        f.write(pickle.dumps(self.data))
-        f.close()
 
-    def detect_face(self, face_encoding):
-        record_list = list(paths.list_files('.\\database\\'))
-        distance = []
-        name = []
-        for record in record_list:
-            record = pickle.loads(open(record,'rb').read())
-            record = np.array(record)
-            name.append(record[0]['name'])
-            encoding = record[0]['encoding']
-            distance.append(face_recognition.face_distance(encoding,face_encoding[0]))
-        min_dis = min(distance)
-        min_pos = distance.index(min_dis)
-        # print('min_dis %f '%min_dis)
-        # print('min_pos %f'%min_pos)
-        if min_dis < 0.55:
-            self.name = name[min_pos]
-        else:
-            self.name = 'unknow'        
-        # print('self.name %s'%self.name)
 
+# 继承PyQt的QThread类设计的类
+# 实现多线程运行(本地pc的gui主程序和微信的自动回复服务器同时运行,互不干扰)
+# 下面这个类是开微信回复的线程的
 class BigThingThread(QThread):
     finished_signal = pyqtSignal(str)
 
@@ -99,27 +42,27 @@ class BigThingThread(QThread):
         itchat.run()
         self.finished_signal.emit('done')
 
+# 继承QDialog类,设计最主要的gui窗口类
 class win(QDialog):
     def __init__(self):
 
         # 初始化一个img的ndarray, 用于存储图像
         self.img = np.ndarray(())
-
         super().__init__()
         self.initUI()
 
+    # 设计界面的外观以及绑定相关组件及函数
     def initUI(self):
         self.resize(400, 300)
         self.lineName = QLineEdit('Name',self)
         self.lineOutput = QPlainTextEdit(self)
         self.btnOpen = QPushButton('Open', self)
         self.btnSave = QPushButton('Save', self)
-        self.btnFindface = QPushButton('Detect faces', self)
+        self.btnFindface = QPushButton('Detect face', self)
         self.btnQuit = QPushButton('Quit', self)
         self.label = QLabel()
-        # my
         self.btnConnect = QPushButton('Connect Wechat',self)
-        self.btnRegist = QPushButton('Regist',self)
+        self.btnRegist = QPushButton('Regist face',self)
         self.subtitile_Output = QLabel('Output:')
         self.subtitile_Input = QLabel('Input:')
 
@@ -131,10 +74,9 @@ class win(QDialog):
         layout.addWidget(self.btnOpen, 4, 1, 1, 1)
         layout.addWidget(self.btnSave, 4, 2, 1, 1)
         layout.addWidget(self.btnFindface, 4, 3, 1, 1)
-        layout.addWidget(self.btnQuit, 4, 4, 1, 1)
-        # my
+        layout.addWidget(self.btnRegist,4, 4, 1, 1)
         layout.addWidget(self.btnConnect,5,1,1,1)
-        layout.addWidget(self.btnRegist,5,2,1,1)
+        layout.addWidget(self.btnQuit,5,2,1,1)
         layout.addWidget(self.subtitile_Output,6,1,1,1)
         layout.addWidget(self.lineOutput,7,1,2,4)
 
@@ -143,10 +85,10 @@ class win(QDialog):
         self.btnSave.clicked.connect(self.saveSlot)
         self.btnFindface.clicked.connect(self.findfaceSlot)
         self.btnQuit.clicked.connect(self.close)
-        # my
         self.btnConnect.clicked.connect(self.ConnectWechat)
         self.btnRegist.clicked.connect(self.Local_Regist)
 
+    # 打开本地图片
     def openSlot(self):
         # 调用打开文件diglog
         fileName, tmp = QFileDialog.getOpenFileName(
@@ -166,6 +108,7 @@ class win(QDialog):
 
         self.refreshShow()
 
+    #保存当前显示的图片到本地
     def saveSlot(self):
         # 调用存储文件dialog
         fileName, tmp = QFileDialog.getSaveFileName(
@@ -179,23 +122,22 @@ class win(QDialog):
         # 调用opencv写入图像
         cv2.imwrite(fileName, self.img)
 
+    # 在图中找脸,标注脸
     def findfaceSlot(self):
         names = []
-        # locations = face_recognition.face_locations(self.img,Degree_Of_Find_Small_Face,'cnn')
         One_object = Face(self.img)
-        # self.img = One_object.image
+
+        # cv2 类型的img转换为PIL中的img,以便在其上画出相应标注
         self.img = cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB)
         self.img = Image.fromarray(self.img)
         draw_image = ImageDraw.Draw(self.img)
+        # 识别图中的脸,并在图中标注出来
         One_object.face_encode()
-        # int(x/ratio)
         for (top, right, bottom, left ), face_encoding in zip(One_object.boxes, One_object.encodings):
             One_object.detect_face([face_encoding])
-            # print(str(face_encoding))
             name = One_object.name
             names.append(name)
             (top, right, bottom, left ) = tuple([int(x/One_object.ratio) for x in (top, right, bottom, left )])
-            # print((top, right, bottom, left ))
             draw_image.rectangle(((left, top),(right,bottom)), outline = (0, 0, 255))
             text_width, text_height = draw_image.textsize(One_object.name)
             draw_image.rectangle(((left, bottom - text_height - 10), (right, bottom)), fill=(0, 0, 255), outline=(0, 0, 255))
@@ -203,11 +145,14 @@ class win(QDialog):
         self.img = np.array(self.img) 
         # Convert RGB to BGR 
         self.img = self.img[:, :, ::-1].copy() 
-        self.lineOutput.setPlainText(str(names))
-        # self.lineOutput.setPlainText
-        # self.lineOutput.displayText()
+        # 输出人名
+        nameOutput = ''
+        for mem in names:
+            nameOutput = nameOutput+'    '+str(mem)
+        self.lineOutput.setPlainText(nameOutput)
         self.refreshShow()
 
+    # 显示图片
     def refreshShow(self):
         # 提取图像的尺寸和通道, 用于将opencv下的image转换成Qimage
         height, width, channel = self.img.shape
@@ -217,35 +162,26 @@ class win(QDialog):
 
         # 将Qimage显示出来
         pixmap = QPixmap.fromImage(self.qImg)
-        # pixmap = pixmap.scaledToHeight(500)
-        # smaller_pixmap = pixmap.scaled(32, 32, KeepAspectRatio, FastTransformation)
-        self.label.setPixmap(pixmap)
-        # self.resize(pixmap.width(),pixmap.height()) #make the window size to fit the pic beautifully
-        
+        self.label.setPixmap(pixmap)        
 
     @staticmethod
     def _show_message(message):
         print('{}'.format(message))
+        print('i dont understand')
 
+    # 开启新线程,运行微信自动回复
     def ConnectWechat(self):
-        # win32api.ShellExecute(0,'open','nude.py','','',1)
-        # global wechat_handle
-        # wechat_handle = win32process.CreateProcess('D:\Anaconda3\python.exe','D:\my_workspace\little_program\pyqt-hw\nude.py',None,None,0,win32process.CREATE_NO_WINDOW,None,None,win32process.STARTUPINFO())
-        # itchat.auto_login(True)
-        # itchat.run()
         self.big_thread = BigThingThread(1)
         self.big_thread.finished_signal.connect(self._show_message)
         self.big_thread.start()
 
+    # 通过本地gui登记人脸
     def Local_Regist(self):
         One_object = Face(self.img)
         One_object.face_encode()
         One_object.regist_face(One_object.encoding,self.lineName.text())
         self.lineOutput.setPlainText('success')
-        # self.lineOutput.displayText()
 
-    def test(self):
-        tsetfun()
 
 if __name__ == '__main__':
 
@@ -256,14 +192,14 @@ if __name__ == '__main__':
         'Master! Beg for a LEGAL command.%s'%helpinfo,
         'I am bored! Please order me.%s'%helpinfo
     ]
+
     command = 'empty'
     reciever = 'filehelper'
     waitname_flag = False
     name = None
-    # global One_instance
     One_instance = Face(command)
     
-
+    # 生成装饰器(详见itchat文档),修饰对文字消息做反应的函数(接受文字消息并作处理和回应)
     @itchat.msg_register([TEXT, MAP, CARD, NOTE, SHARING])
     def text_reply(msg):
         text = msg['Text']
@@ -288,7 +224,7 @@ if __name__ == '__main__':
                 itchat.send(random.choice(init_reply_list),reciever)
 
 
-
+    # 生成装饰器(详见itchat文档),修饰对图片消息做反应的函数(下载图片,并作处理和回应)
     @itchat.msg_register([PICTURE, RECORDING, ATTACHMENT, VIDEO])
     def download_files(msg):
         msg.download(msg.fileName)
@@ -299,6 +235,7 @@ if __name__ == '__main__':
         fname=cv2.imread(msg.fileName)
         global One_instance
         One_instance = Face(fname)
+        Text_inatance = Text(fname)
 
         if command == 'regist':
             One_instance.face_encode()
@@ -313,23 +250,16 @@ if __name__ == '__main__':
             print('after detect')
             itchat.send(One_instance.name,reciever)
             print('after send')
+        elif command == 'text':
+            Text_inatance.detect_face()
+            itchat.send(Text_inatance.txtcontent)
 
-
-
-        # n.resize(maxheight=800, maxwidth=600)
-        # n.parse()#分析函数
-        # n.showSkinRegions()
-        
-        # #print(n.result, n.inspect())
-        # #itchat.send_image(msg.fileName,'filehelper') # 发送图片
-        # # itchat.send('经专业鉴定，此图%s' % ('涉黄，请跟我们走一趟' if n.result== True else '清清白白，组织相信你了'), msg['FromUserName'])
-        # itchat.send('经专业鉴定，此图%s' % ('涉黄，请跟我们走一趟' if n.result== True else '清清白白，组织相信你了'), 'filehelper')
-
+    # 运行gui程序
     a = QApplication(sys.argv)
     w = win()
     w.show()
     sys.exit(a.exec_())
-    # win32process.TerminateProcess(wechat_handle[0],0)
+
 
 
 # necessary waitlist:
