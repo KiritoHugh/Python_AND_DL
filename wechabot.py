@@ -21,7 +21,7 @@ import face_recognition
 # import pickle
 # from collections import namedtuple
 from PyQt5.QtCore import QThread, pyqtSignal
-from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtGui import QImage, QPixmap, QIcon, QPixmap
 
 # Degree_Of_Find_Small_Face = 2
 
@@ -49,8 +49,6 @@ class BigThingThread(QThread):
         itchat.logout()
 
 # 继承QDialog类,设计最主要的gui窗口类
-
-
 class win(QDialog):
     def __init__(self):
 
@@ -58,6 +56,8 @@ class win(QDialog):
         self.img = np.ndarray(())
         super().__init__()
         self.initUI()
+        self.setWindowTitle('WECHAboT')
+        self.setWindowIcon(QIcon(QPixmap("robot.png")))
 
     # 设计界面的外观以及绑定相关组件及函数
     def initUI(self):
@@ -300,18 +300,9 @@ if __name__ == '__main__':
             itchat.send(Text_inatance.textcontent, reciever)
 
     # 运行gui程序
+    # a = QApplication(sys.argv)
     a = QApplication(sys.argv)
     w = win()
     w.show()
     sys.exit(a.exec_())
 
-
-# necessary waitlist:
-#     - use UI to regist/detect [input of qt, text show of qt]
-#     - pluse some other API(pic2text*, weather, voice generatet**, voice2text*, generate stock pic)
-
-# improvement waitlist:
-#     - in the Face.face_encode, if no face in photo
-#     - voice changer**
-#     - solve sodu***
-#     - modify the weekness of only detecting a SINGLE face in Face.detect_face(self.name=the list of names)***
