@@ -36,7 +36,7 @@ class BigThingThread(QThread):
         super().__init__(parent)
         self._rest = rest
 
-    # 登录并开始后台运行
+    # 登录微信并开始后台运行自动回复
     def run(self):
         print('do something big')
         itchat.auto_login(True)
@@ -44,7 +44,7 @@ class BigThingThread(QThread):
         itchat.run()
         self.finished_signal.emit('done')
 
-    # 登出
+    # 登出微信
     def logout(self):
         itchat.logout()
 
