@@ -49,14 +49,16 @@ class Face(object):
 
     # 登记人脸到数据库
     def regist_face(self, face_encoding, face_name):
+        record_list = list(paths.list_files('.\\database\\'))
         # 登记数据到pickle文件
         self.data = [{'name': face_name, 'encoding': face_encoding}]
         f = open('.\\database\\'+face_name, 'wb')
         f.write(pickle.dumps(self.data))
         f.close()
         # 检查是否与database内已经存在的重名
-        record_list = list(paths.list_files('.\\database\\'))
         name_list = [x[11:] for x in record_list]
+        print(str(name_list))
+        print(face_name)
         if face_name in name_list:
             return 'name has existed, overwrite success'
         else:
@@ -78,7 +80,7 @@ class Face(object):
         min_pos = distance.index(min_dis)
         # print('min_dis %f '%min_dis)
         # print('min_pos %f'%min_pos)
-        if min_dis < 0.5:
+        if min_dis < 0.52:
             self.name = name[min_pos]
         else:
             self.name = 'unknow'
